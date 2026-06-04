@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-color: #1db791;
+  --bg-dark: #0f1117;
+  --surface-dark: #12141a;
+  --text-primary: #e8eaed;
+  --text-secondary: #9ca3af;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3a3d45; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #4a4d55; }
+
+/* WhatsApp Style Components */
+
+.message-bubble {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  position: relative;
+  margin-bottom: 2px;
+}
+
+.message-sent {
+  background: #056162; /* WhatsApp Dark Green for sent */
+  align-self: flex-end;
+  border-bottom-right-radius: 2px;
+}
+
+.message-received {
+  background: #262d31; /* WhatsApp Dark Grey for received */
+  align-self: flex-start;
+  border-bottom-left-radius: 2px;
+}
+
+.chat-area {
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.sidebar-item {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-item:hover { background: rgba(255,255,255,0.06); }
+.sidebar-item.active { background: rgba(29, 183, 145, 0.15); border-left: 3px solid var(--brand-color); }
+
+input, textarea {
+  outline: none;
+  background: #1e2028;
+  border: 1px solid #3a3d45;
+  color: #e8eaed;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus { border-color: var(--brand-color); }
+
+.btn-primary {
+  background: var(--brand-color);
+  color: white;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: filter 0.15s;
+  width: 100%;
+}
+.btn-primary:hover { filter: brightness(1.1); }
+.btn-primary:active { transform: scale(0.98); }
+
+/* Animation Classes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
