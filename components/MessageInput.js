@@ -50,7 +50,7 @@ export default function MessageInput({ channelId }) {
     formData.append('file', file)
 
     try {
-      const { data } = await api.post(\`/files/upload/\${channelId}\`, formData)
+      const { data } = await api.post(`/files/upload/${channelId}`, formData)
       const socket = getSocket()
       socket.emit('message:send', {
         channel_id: channelId,

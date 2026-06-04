@@ -28,8 +28,8 @@ export default function ChannelPage() {
     setLoading(true)
 
     Promise.all([
-      api.get(\`/messages/\${channelId}\`),
-      api.get(\`/channels/\${channelId}/members\`),
+      api.get(`/messages/${channelId}`),
+      api.get(`/channels/${channelId}/members`),
     ]).then(([msgRes, memRes]) => {
       setMessages(channelId, msgRes.data.data)
       setMembers(memRes.data.data)
@@ -79,7 +79,7 @@ export default function ChannelPage() {
                   <p className="text-[12px] text-brand-500 animate-pulse font-medium">typing...</p>
                 ) : (
                   <p className="text-[12px] text-gray-500">
-                    {channel?.type === 'dm' ? 'Online' : \`\${channel?.topic || 'Digital Workspace'}\`}
+                    {channel?.type === 'dm' ? 'Online' : `${channel?.topic || 'Digital Workspace'}`}
                   </p>
                 )}
               </div>

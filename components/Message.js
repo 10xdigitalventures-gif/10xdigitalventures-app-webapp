@@ -65,8 +65,8 @@ export default function Message({ msg, channelId }) {
 
   if (isDeleted) {
     return (
-      <div className={`flex w-full mb-2 \${isOwn ? 'justify-end' : 'justify-start'}`}>
-        <div className={`message-bubble \${isOwn ? 'message-sent' : 'message-received'} opacity-60`}>
+      <div className={`flex w-full mb-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+        <div className={`message-bubble ${isOwn ? 'message-sent' : 'message-received'} opacity-60`}>
           <div className="text-xs italic flex items-center gap-1">
             🚫 <span>This message was deleted</span>
           </div>
@@ -77,11 +77,11 @@ export default function Message({ msg, channelId }) {
 
   return (
     <div
-      className={`flex w-full mb-1 \${isOwn ? 'justify-end' : 'justify-start'} group animate-fade-in`}
+      className={`flex w-full mb-1 ${isOwn ? 'justify-end' : 'justify-start'} group animate-fade-in`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); setShowEmoji(false) }}
     >
-      <div className={`message-bubble relative \${isOwn ? 'message-sent' : 'message-received'}`}>
+      <div className={`message-bubble relative ${isOwn ? 'message-sent' : 'message-received'}`}>
         {/* Sender Name for Received Messages in Groups */}
         {!isOwn && (
           <div className="text-[11px] font-bold text-brand-500 mb-1 leading-none">
