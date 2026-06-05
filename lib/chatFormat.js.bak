@@ -85,18 +85,3 @@ export function lastMsgStatus(channel, currentUserId) {
 export function peerId(channel) {
   return channel?.peer_id || channel?.other_user_id || channel?.dm_user_id || null
 }
-
-// Resolve a stored file path/url to a loadable absolute URL.
-// Files live on the API origin (e.g. https://api.10xdigitalventures.com),
-// while the web app runs on a different origin, so relative paths must be
-// prefixed. Handles full URLs, "/uploads/x.jpg" paths, and bare filenames.
-export function mediaUrl(u) {
-  if (!u) return ''
-  const s = String(u)
-  if (/^(https?:|data:|blob:)/i.test(s)) return s
-  let base = process.env.NEXT_PUBLIC_SOCKET_URL || ''
-  if (!base) base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/api\/?$/, '')
-  base = base.replace(/\/$/, '')
-  if (s.startsWith('/')) return base + s
-  return base + '/uploads/' + s
-}

@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
+import { mediaUrl } from '@/lib/chatFormat'
+import { mediaUrl } from '@/lib/chatFormat'
 
 const EMOJIS = ['👍','❤️','😂','😂','😮','😢','🔥','✅','👀']
 const timeFormatter = new Intl.DateTimeFormat('en-US', {
@@ -106,9 +108,9 @@ export default function Message({ msg, channelId }) {
         ) : (
           <div className="relative">
             {msg.type === 'image' ? (
-              <img src={msg.file_url || msg.content} alt="Image" className="max-w-xs rounded-sm mb-1 cursor-pointer hover:brightness-95" />
+              <img src={mediaUrl(msg.file_url || msg.content)} onClick={() => window.open(mediaUrl(msg.file_url || msg.content), '_blank')} alt="Image" className="max-w-xs rounded-sm mb-1 cursor-pointer hover:brightness-95" />
             ) : msg.type === 'file' ? (
-              <a href={msg.file_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 mb-1 px-3 py-2 bg-black/10 rounded border border-white/5 text-sm hover:bg-black/20">
+              <a href={mediaUrl(msg.file_url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 mb-1 px-3 py-2 bg-black/10 rounded border border-white/5 text-sm hover:bg-black/20">
                 📎 {msg.content}
               </a>
             ) : msg.type === 'voice' || msg.type === 'audio' ? (

@@ -1,3 +1,99 @@
+# ============================================================================
+#  10x Chat â€” fix chat images + redesign the conversation topbar
+#   - Images: resolve relative /uploads paths against the API origin so they
+#     load on the web domain (chat.* vs api.*).
+#   - Topbar: clean WhatsApp-style header with SVG icons, presence/typing,
+#     voice + video call buttons, and a members/info toggle.
+#
+#  Run from the repo root:
+#      cd path\to\10xdigitalventures-app-webapp
+#      powershell -ExecutionPolicy Bypass -File .\fix-images-and-topbar.ps1
+# ============================================================================
+
+$ErrorActionPreference = "Stop"
+if (-not (Test-Path ".\package.json")) {
+  Write-Host "ERROR: run this from the repo root (package.json not found)." -ForegroundColor Red
+  exit 1
+}
+
+function Patch($Path, $Find, $Replace) {
+  $full = Join-Path (Get-Location) $Path
+  if (-not (Test-Path $full)) { Write-Host "  skip (not found): $Path" -ForegroundColor Yellow; return }
+  $c = [System.IO.File]::ReadAllText($full)
+  if ($c.Contains($Replace)) { Write-Host "  already patched: $Path" -ForegroundColor DarkGray; return }
+  if (-not $c.Contains($Find)) { Write-Host "  pattern NOT found in $Path" -ForegroundColor Yellow; return }
+  if (-not (Test-Path "$full.bak")) { Copy-Item $full "$full.bak" -Force }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($full, $c.Replace($Find, $Replace), $enc)
+  Write-Host "  patched: $Path" -ForegroundColor Green
+}
+
+function AppendIfMissing($Path, $Marker, $Content) {
+  $full = Join-Path (Get-Location) $Path
+  if (-not (Test-Path $full)) { Write-Host "  skip (not found): $Path" -ForegroundColor Yellow; return }
+  $c = [System.IO.File]::ReadAllText($full)
+  if ($c.Contains($Marker)) { Write-Host "  already has mediaUrl: $Path" -ForegroundColor DarkGray; return }
+  if (-not (Test-Path "$full.bak")) { Copy-Item $full "$full.bak" -Force }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($full, ($c.TrimEnd() + "`r`n`r`n" + $Content + "`r`n"), $enc)
+  Write-Host "  appended mediaUrl to $Path" -ForegroundColor Green
+}
+
+function Write-RepoFile($Path, $Content) {
+  $full = Join-Path (Get-Location) $Path
+  $dir  = Split-Path $full -Parent
+  if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+  if ((Test-Path $full) -and -not (Test-Path "$full.bak")) { Copy-Item $full "$full.bak" -Force }
+  $enc = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($full, $Content, $enc)
+  Write-Host "  wrote $Path" -ForegroundColor Green
+}
+
+Write-Host "`n[1/3] Adding media URL resolver to lib/chatFormat.js..." -ForegroundColor Cyan
+$mediaUrlFn = @'
+// Resolve a stored file path/url to a loadable absolute URL.
+// Files live on the API origin (e.g. https://api.10xdigitalventures.com),
+// while the web app runs on a different origin, so relative paths must be
+// prefixed. Handles full URLs, "/uploads/x.jpg" paths, and bare filenames.
+export function mediaUrl(u) {
+  if (!u) return ''
+  const s = String(u)
+  if (/^(https?:|data:|blob:)/i.test(s)) return s
+  let base = process.env.NEXT_PUBLIC_SOCKET_URL || ''
+  if (!base) base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/api\/?$/, '')
+  base = base.replace(/\/$/, '')
+  if (s.startsWith('/')) return base + s
+  return base + '/uploads/' + s
+}
+'@
+AppendIfMissing "lib\chatFormat.js" 'export function mediaUrl' $mediaUrlFn
+
+Write-Host "`n[2/3] Fixing image/file rendering in components/Message.js..." -ForegroundColor Cyan
+
+# add the import next to the socket import
+$impFind = @'
+import { getSocket } from '@/lib/socket'
+'@
+$impRepl = @'
+import { getSocket } from '@/lib/socket'
+import { mediaUrl } from '@/lib/chatFormat'
+'@
+Patch "components\Message.js" $impFind $impRepl
+
+# image: resolve src + open full image on click
+$imgFind = @'
+src={msg.file_url || msg.content} alt="Image"
+'@
+$imgRepl = @'
+src={mediaUrl(msg.file_url || msg.content)} onClick={() => window.open(mediaUrl(msg.file_url || msg.content), '_blank')} alt="Image"
+'@
+Patch "components\Message.js" $imgFind $imgRepl
+
+# file download link: resolve href
+Patch "components\Message.js" 'href={msg.file_url}' 'href={mediaUrl(msg.file_url)}'
+
+Write-Host "`n[3/3] Rewriting the conversation topbar (app/chat/[channelId]/page.js)..." -ForegroundColor Cyan
+$channelPage = @'
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -145,3 +241,20 @@ export default function ChannelPage() {
     </div>
   )
 }
+'@
+Write-RepoFile "app\chat\[channelId]\page.js" $channelPage
+
+Write-Host "`nDone." -ForegroundColor Cyan
+$doGit = Read-Host "Commit and push? (y/n)"
+if ($doGit -eq 'y') {
+  git add "lib/chatFormat.js" "components/Message.js" "app/chat/[channelId]/page.js"
+  git commit -m "fix(web): resolve media URLs for chat images; redesign conversation topbar (SVG icons, call buttons, members toggle)"
+  $push = Read-Host "Push now? (y/n)"
+  if ($push -eq 'y') { git push; Write-Host "`nPushed. Rebuild/redeploy to see it live." -ForegroundColor Green }
+  else { Write-Host "`nCommitted locally. Push later with: git push" -ForegroundColor Yellow }
+} else {
+  Write-Host "`nSkipped git. Review with: git diff" -ForegroundColor Yellow
+}
+Write-Host "`nIMPORTANT for images: your web env must have NEXT_PUBLIC_SOCKET_URL set to the API origin," -ForegroundColor Yellow
+Write-Host "e.g. NEXT_PUBLIC_SOCKET_URL=https://api.10xdigitalventures.com  (sockets already use it, so it's likely set)." -ForegroundColor Yellow
+Write-Host "Test locally: npm run dev -> open a chat." -ForegroundColor Cyan
