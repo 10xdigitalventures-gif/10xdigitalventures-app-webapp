@@ -8,6 +8,7 @@ import Message from '@/components/Message'
 import MessageInput from '@/components/MessageInput'
 import MembersList from '@/components/MembersList'
 import { getSocket } from '@/lib/socket'
+import { useCall } from '@/context/CallContext'
 
 const ICO = { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
 function HashIcon() { return (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>) }
@@ -24,6 +25,7 @@ function IconBtn({ title, onClick, children }) {
 export default function ChannelPage() {
   const { channelId } = useParams()
   const { channels, messages, members, setMessages, setMembers, setActiveChannel, typingUsers, user } = useChatStore()
+  const call = useCall()
   const [loading, setLoading] = useState(true)
   const [showMembers, setShowMembers] = useState(true)
   const bottomRef = useRef(null)
@@ -32,6 +34,7 @@ export default function ChannelPage() {
   const channel = channels.find(c => c.id === channelId)
   const isDM = channel?.type === 'dm'
   const channelMessages = messages[channelId] || []
+  const dmPeer = isDM ? (members || []).find(m => String(m.id) !== String(user?.id)) : null
 
   const typingInChannel = typingUsers[channelId]
     ? [...typingUsers[channelId]].filter(id => id !== user?.id)
@@ -76,7 +79,9 @@ export default function ChannelPage() {
   }, [channelId, user?.id])
 
   const handleCall = (type) => {
-    toast(`${type === 'video' ? 'Video' : 'Voice'} calling is being set up - coming soon`)
+    if (!isDM || !dmPeer) { toast('Calls are available in direct messages'); return }
+    if (!call?.startCall) { toast('Calling is not ready'); return }
+    call.startCall(dmPeer.id, dmPeer.name, type)
   }
 
   const subtitle = typingInChannel.length > 0
