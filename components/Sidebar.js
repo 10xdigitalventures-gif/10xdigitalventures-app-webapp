@@ -1,4 +1,5 @@
 'use client'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -11,25 +12,38 @@ export default function Sidebar({ activeChannelId }) {
   const { user, channels, addChannel } = useChatStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [users, setUsers] = useState([])
-  const [filter, setFilter] = useState('all') // 'all', 'unread', 'groups'
+  const [filter, setFilter] = useState('all')
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
         const { data } = await api.get('/users')
-        const usersList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []; setUsers(usersList.filter(u => u.id !== user?.id))
+        const usersList = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+            ? data
+            : []
+
+        setUsers(usersList.filter(u => u.id !== user?.id))
       } catch (err) {
         console.error('Failed to fetch users', err)
       }
     }
-    fetchUsers()
-  }, [user])
 
-  const startDM = async (userId) => {
+    if (user?.id) fetchUsers()
+  }, [user?.id])
+
+  const startDM = async userId => {
     try {
       const { data } = await api.post(`/channels/dm/${userId}`)
-      addChannel(data)
-      router.push(`/chat/${data.id}`)
+      const channel = data?.data || data
+
+      if (!channel?.id) {
+        throw new Error('Invalid channel response')
+      }
+
+      addChannel(channel)
+      router.push(`/chat/${channel.id}`)
     } catch (err) {
       toast.error('Could not start direct message')
     }
@@ -41,51 +55,58 @@ export default function Sidebar({ activeChannelId }) {
     router.replace('/login')
   }
 
-  const safeChannels = Array.isArray(channels) ? channels : []; const filteredChats = safeChannels.filter(ch => {
-    const matchesSearch = ch.name.toLowerCase().includes(searchQuery.toLowerCase())
-    if (filter === 'groups') return ch.type === 'public' || ch.type === 'private'
-    if (filter === 'all') return matchesSearch
+  const safeChannels = Array.isArray(channels) ? channels : []
+
+  const filteredChats = safeChannels.filter(ch => {
+    const name = ch?.name || ''
+    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase())
+
+    if (filter === 'groups') return (ch.type === 'public' || ch.type === 'private') && matchesSearch
     return matchesSearch
   })
 
+  const suggestedUsers = users.filter(u => {
+    const name = u?.name || ''
+    const email = u?.email || ''
+    const q = searchQuery.toLowerCase()
+
+    return name.toLowerCase().includes(q) || email.toLowerCase().includes(q)
+  })
+
   return (
-    <div className="w-[400px] bg-[#111b21] border-r border-[#222d34] flex flex-col h-screen flex-shrink-0">
-      {/* Header */}
-      <div className="p-4 bg-[#202c33] flex items-center justify-between">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/profile')}>
-          <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold">
-            {user?.name?.[0]?.toUpperCase() || 'U'}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-white font-medium leading-tight">10x Chat Global v2.0</span>
-            <span className="text-xs text-green-400">● Online</span>
-          </div>
-        </div>
-        <div className="flex gap-4 text-gray-400">
-          <button onClick={() => {}} className="hover:text-white">💬</button>
-          <button onClick={logout} className="hover:text-white">↪</button>
+    <aside className="w-80 bg-[#111820] border-r border-white/10 flex flex-col min-h-screen">
+      <div className="p-4 border-b border-white/10">
+        <div className="flex items-center justify-between">
+          <button onClick={() => router.push('/profile')} className="flex items-center gap-3 text-left">
+            <div className="h-10 w-10 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold">
+              {user?.name?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <div>
+              <div className="text-white font-semibold">{user?.name || 'User'}</div>
+              <div className="text-xs text-green-400">10x Chat Global v2.0 ● Online</div>
+            </div>
+          </button>
+
+          <button onClick={logout} className="text-gray-400 hover:text-white">↪</button>
         </div>
       </div>
 
-      {/* Search & Filters */}
-      <div className="p-3 space-y-3">
-        <div className="relative">
-          <input 
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search or start new chat"
-            className="w-full pl-10 pr-4 py-2 bg-[#202c33] border-none rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-          <span className="absolute left-3 top-2.5 text-gray-500">🔍</span>
-        </div>
-        
-        <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="p-4 space-y-3">
+        <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search or start new chat"
+          className="w-full px-4 py-2 bg-[#202c33] border-none rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        />
+
+        <div className="flex gap-2">
           {['all', 'unread', 'groups'].map(f => (
-            <button 
-              key={f} 
+            <button
+              key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === f ? 'bg-brand-500 text-white' : 'bg-[#202c33] text-gray-400 hover:bg-[#2a2d35]'}`}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                filter === f ? 'bg-brand-500 text-white' : 'bg-[#202c33] text-gray-400 hover:bg-[#2a2d35]'
+              }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
@@ -93,59 +114,58 @@ export default function Sidebar({ activeChannelId }) {
         </div>
       </div>
 
-      {/* Chat List */}
-      <div className="flex-1 overflow-y-auto">
-        {searchQuery && (
-          <div className="px-4 py-2 bg-[#111b21]">
-            <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Suggested Users</p>
-            {users
-              .filter(u => u.name.toLowerCase().includes(searchQuery.toLowerCase()) || u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map(u => (
-                <div 
-                  key={u.id} 
-                  onClick={() => startDM(u.id)}
-                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-[#202c33] rounded-lg transition-colors group"
-                >
-                  <div className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center text-white font-medium">
-                    {u.name?.[0]?.toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-center">
-                      <span className="text-white font-medium truncate">{u.name}</span>
-                      <span className="text-xs text-gray-500">Start Chat</span>
-                    </div>
-                    <p className="text-sm text-gray-400 truncate">Start a conversation with {u.name}</p>
-                  </div>
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+        {searchQuery && suggestedUsers.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs uppercase tracking-wide text-gray-500 px-2 mb-2">Suggested Users</div>
+
+            {suggestedUsers.map(u => (
+              <button
+                key={u.id}
+                onClick={() => startDM(u.id)}
+                className="w-full flex items-center gap-3 p-3 cursor-pointer hover:bg-[#202c33] rounded-lg transition-colors text-left"
+              >
+                <div className="h-9 w-9 rounded-full bg-gray-700 flex items-center justify-center text-white font-bold">
+                  {u.name?.[0]?.toUpperCase() || 'U'}
                 </div>
-              ))
-            }
+                <div>
+                  <div className="text-sm text-white">{u.name}</div>
+                  <div className="text-xs text-gray-500">Start a conversation</div>
+                </div>
+              </button>
+            ))}
           </div>
         )}
 
-        <div className="divide-y divide-[#222d34]">
+        <div className="space-y-1">
           {filteredChats.map(ch => (
-            <Link key={ch.id} href={`/chat/${ch.id}`}>
-              <div className={`flex items-center gap-3 p-3 cursor-pointer transition-colors ${activeChannelId === ch.id ? 'bg-[#2a3d45]' : 'hover:bg-[#202c33]'}`}>
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-medium ${ch.type === 'direct' ? 'bg-brand-500' : 'bg-gray-600'}`}>
-                  {ch.name?.[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-white font-medium truncate">{ch.name}</span>
-                    <span className="text-xs text-gray-500 ml-2">12:00 PM</span>
-                  </div>
-                  <p className="text-sm text-gray-400 truncate">Click to open chat</p>
+            <Link
+              key={ch.id}
+              href={`/chat/${ch.id}`}
+              className={`flex items-center gap-3 p-3 rounded-lg transition-colors ${
+                activeChannelId === ch.id ? 'bg-brand-500/20 text-white' : 'text-gray-300 hover:bg-[#202c33]'
+              }`}
+            >
+              <div className="h-10 w-10 rounded-full bg-[#202c33] flex items-center justify-center text-white font-bold">
+                {ch.type === 'dm' ? ch.name?.[0]?.toUpperCase() : '#'}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{ch.name}</div>
+                <div className="text-xs text-gray-500 truncate">
+                  {ch.topic || 'Click to open chat'}
                 </div>
               </div>
             </Link>
           ))}
+
           {filteredChats.length === 0 && !searchQuery && (
-            <div className="p-8 text-center text-gray-500 text-sm">
+            <div className="text-center text-sm text-gray-500 py-8">
               No chats found. Start a new conversation!
             </div>
           )}
         </div>
       </div>
-    </div>
+    </aside>
   )
 }

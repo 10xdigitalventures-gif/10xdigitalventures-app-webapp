@@ -1,4 +1,5 @@
 'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -7,7 +8,12 @@ import api from '@/lib/api'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [form, setForm] = useState({ name: '', email: '', password: '', invite_code: '' })
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    invite_code: '',
+  })
   const [loading, setLoading] = useState(false)
 
   const handle = e => setForm({ ...form, [e.target.name]: e.target.value })
@@ -15,10 +21,17 @@ export default function RegisterPage() {
   const submit = async e => {
     e.preventDefault()
     setLoading(true)
+
     try {
       const { data } = await api.post('/auth/register', form)
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
+      const payload = data?.data || data
+
+      if (!payload?.token || !payload?.user) {
+        throw new Error('Invalid registration response')
+      }
+
+      localStorage.setItem('token', payload.token)
+      localStorage.setItem('user', JSON.stringify(payload.user))
       router.replace('/chat')
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'Registration failed')
@@ -28,39 +41,42 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-[#0f1117]">
-      <div className="w-full max-w-sm p-8 bg-[#1a1d24] rounded-2xl border border-[#3a3d45]">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-brand-500 rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">10x</div>
-          <h1 className="text-xl font-semibold text-white">Create account</h1>
-          <p className="text-sm text-gray-400 mt-1">You need an invite code to join</p>
+    <div className="min-h-screen bg-[#0f1117] flex items-center justify-center p-4">
+      <form onSubmit={submit} className="w-full max-w-md bg-[#1a1d24] border border-gray-700 rounded-2xl p-8 space-y-5">
+        <div className="text-center">
+          <div className="mx-auto mb-6 h-14 w-14 rounded-xl bg-brand-500 flex items-center justify-center font-bold text-xl text-white">10x</div>
+          <h1 className="text-2xl font-bold text-white">Create account</h1>
+          <p className="text-gray-400 mt-2">You need an invite code to join</p>
         </div>
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Full Name</label>
-            <input name="name" placeholder="Your name" value={form.name} onChange={handle} required />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Email</label>
-            <input name="email" type="email" placeholder="you@example.com" value={form.email} onChange={handle} required />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Password</label>
-            <input name="password" type="password" placeholder="Min 8 characters" value={form.password} onChange={handle} required />
-          </div>
-          <div>
-            <label className="text-xs text-gray-400 mb-1 block">Invite Code</label>
-            <input name="invite_code" placeholder="Enter workspace invite code" value={form.invite_code} onChange={handle} required />
-          </div>
-          <button type="submit" className="btn-primary mt-2" disabled={loading}>
-            {loading ? 'Creating account...' : 'Create Account'}
-          </button>
-        </form>
-        <p className="text-center text-sm text-gray-400 mt-6">
-          Already have an account?{' '}
-          <Link href="/login" className="text-brand-100 hover:underline">Sign in</Link>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Full Name</label>
+          <input name="name" value={form.name} onChange={handle} className="w-full px-4 py-3 rounded-lg bg-gray-100 text-black" required />
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Email</label>
+          <input name="email" type="email" value={form.email} onChange={handle} className="w-full px-4 py-3 rounded-lg bg-gray-100 text-black" required />
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Password</label>
+          <input name="password" type="password" value={form.password} onChange={handle} className="w-full px-4 py-3 rounded-lg bg-gray-100 text-black" required />
+        </div>
+
+        <div>
+          <label className="block text-sm text-gray-400 mb-2">Invite Code</label>
+          <input name="invite_code" value={form.invite_code} onChange={handle} className="w-full px-4 py-3 rounded-lg bg-gray-100 text-black" required />
+        </div>
+
+        <button disabled={loading} className="w-full py-3 rounded-lg bg-brand-500 text-white font-semibold disabled:opacity-70">
+          {loading ? 'Creating account...' : 'Create Account'}
+        </button>
+
+        <p className="text-center text-gray-400">
+          Already have an account? <Link href="/login" className="text-white font-semibold">Sign in</Link>
         </p>
-      </div>
+      </form>
     </div>
   )
 }

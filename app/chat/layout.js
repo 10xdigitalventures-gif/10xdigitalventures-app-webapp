@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -77,34 +77,14 @@ export default function ChatLayout({ children }) {
 
         if (socket) {
           socket.emit('join:channels')
-
           socket.on('message:new', msg => addMessage(msg.channel_id, msg))
-
-          socket.on('message:edited', ({ message_id, channel_id, content }) =>
-            updateMessage(channel_id, message_id, {
-              content,
-              is_edited: 1,
-            })
-          )
-
-          socket.on('message:deleted', ({ message_id, channel_id }) =>
-            deleteMessage(channel_id, message_id)
-          )
-
-          socket.on('reaction:updated', ({ message_id, channel_id, emoji, user_id, action }) =>
-            updateReaction(channel_id, message_id, emoji, user_id, action)
-          )
-
+          socket.on('message:edited', ({ message_id, channel_id, content }) => updateMessage(channel_id, message_id, { content, is_edited: 1 }))
+          socket.on('message:deleted', ({ message_id, channel_id }) => deleteMessage(channel_id, message_id))
+          socket.on('reaction:updated', ({ message_id, channel_id, emoji, user_id, action }) => updateReaction(channel_id, message_id, emoji, user_id, action))
           socket.on('user:online', ({ user_id }) => setUserOnline(user_id))
           socket.on('user:offline', ({ user_id }) => setUserOffline(user_id))
-
-          socket.on('typing:start', ({ user_id, channel_id }) =>
-            setTyping(channel_id, user_id, true)
-          )
-
-          socket.on('typing:stop', ({ user_id, channel_id }) =>
-            setTyping(channel_id, user_id, false)
-          )
+          socket.on('typing:start', ({ user_id, channel_id }) => setTyping(channel_id, user_id, true))
+          socket.on('typing:stop', ({ user_id, channel_id }) => setTyping(channel_id, user_id, false))
         }
       } catch (error) {
         console.error('Chat init failed:', error)
@@ -141,9 +121,7 @@ export default function ChatLayout({ children }) {
   return (
     <div className="flex min-h-screen bg-[#0f1117] text-white">
       <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        {children}
-      </main>
+      <main className="flex-1 overflow-hidden">{children}</main>
     </div>
   )
 }
