@@ -21,7 +21,7 @@ export default function LoginPage() {
       localStorage.setItem('user', JSON.stringify(data.user))
       router.replace('/chat')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed')
+      toast.error(err.response?.data?.message || err.message || 'Login failed')
     } finally {
       setLoading(false)
     }
