@@ -28,8 +28,8 @@ export default function ChatLayout({ children }) {
           api.get('/auth/me'),
           api.get('/channels'),
         ])
-        setUser(meRes.data)
-        setChannels(chRes.data)
+        setUser(meRes.data.data)
+        setChannels(Array.isArray(chRes.data?.data) ? chRes.data.data : [])
         setReady(true)
 
         const socket = getSocket()
