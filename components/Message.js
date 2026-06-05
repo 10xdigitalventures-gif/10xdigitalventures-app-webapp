@@ -3,7 +3,6 @@ import { useState } from 'react'
 import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
 import { mediaUrl } from '@/lib/chatFormat'
-import { mediaUrl } from '@/lib/chatFormat'
 
 const EMOJIS = ['👍','❤️','😂','😂','😮','😢','🔥','✅','👀']
 const timeFormatter = new Intl.DateTimeFormat('en-US', {
