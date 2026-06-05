@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import toast from 'react-hot-toast'
 import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
 import { getInitials } from '@/lib/chatFormat'
@@ -17,6 +18,8 @@ export function CallProvider({ children }) {
   const [peer, setPeer] = useState(null)            // { id, name }
   const [muted, setMuted] = useState(false)
   const [camOff, setCamOff] = useState(false)
+  const [hasLocalVideo, setHasLocalVideo] = useState(false)
+  const [remoteVideoOn, setRemoteVideoOn] = useState(false)
 
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
@@ -25,16 +28,49 @@ export function CallProvider({ children }) {
   const remoteAudioRef = useRef(null)
   const pendingOfferRef = useRef(null)
   const pendingCandidatesRef = useRef([])
+  const audioCtxRef = useRef(null)
+  const ringRef = useRef(null)
+
+  // Ask for notification permission up front so incoming calls can alert.
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
+  }, [])
+
+  const startRingtone = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') ctx.resume()
+      const beep = () => {
+        const o = ctx.createOscillator(); const g = ctx.createGain()
+        o.type = 'sine'; o.frequency.value = 480
+        o.connect(g); g.connect(ctx.destination)
+        g.gain.setValueAtTime(0.0001, ctx.currentTime)
+        g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.05)
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5)
+        o.start(); o.stop(ctx.currentTime + 0.55)
+      }
+      beep()
+      ringRef.current = setInterval(beep, 1600)
+    } catch (e) {}
+  }, [])
+
+  const stopRingtone = useCallback(() => {
+    if (ringRef.current) { clearInterval(ringRef.current); ringRef.current = null }
+  }, [])
 
   const cleanup = useCallback(() => {
+    stopRingtone()
     try { pcRef.current?.close() } catch (e) {}
     pcRef.current = null
     localStreamRef.current?.getTracks().forEach(t => t.stop())
     localStreamRef.current = null
     pendingOfferRef.current = null
     pendingCandidatesRef.current = []
-    setMuted(false); setCamOff(false)
-  }, [])
+    setMuted(false); setCamOff(false); setHasLocalVideo(false); setRemoteVideoOn(false)
+  }, [stopRingtone])
 
   const finish = useCallback(() => { cleanup(); setState('idle'); setPeer(null) }, [cleanup])
 
@@ -51,7 +87,18 @@ export function CallProvider({ children }) {
   const createPeer = useCallback((targetId) => {
     const pc = new RTCPeerConnection(ICE)
     pc.onicecandidate = (e) => { if (e.candidate) getSocket()?.emit('call:ice', { to: targetId, candidate: e.candidate }) }
-    pc.ontrack = (e) => attachRemote(e.streams[0])
+    pc.ontrack = (e) => {
+      const stream = e.streams[0]
+      attachRemote(stream)
+      const vt = stream.getVideoTracks()[0]
+      if (vt) {
+        const upd = () => setRemoteVideoOn(!!vt.enabled && !vt.muted)
+        vt.onmute = upd; vt.onunmute = upd; vt.onended = () => setRemoteVideoOn(false)
+        upd()
+      } else {
+        setRemoteVideoOn(false)
+      }
+    }
     pc.onconnectionstatechange = () => {
       if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) finish()
     }
@@ -59,14 +106,25 @@ export function CallProvider({ children }) {
     return pc
   }, [finish])
 
-  const getMedia = async (type) => {
-    const stream = await navigator.mediaDevices.getUserMedia(
-      type === 'video' ? { audio: true, video: true } : { audio: true, video: false }
-    )
+  // Camera-optional: if video is wanted but no camera / denied, fall back to
+  // audio-only so the call still connects.
+  const getMedia = useCallback(async (type) => {
+    let stream
+    if (type === 'video') {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+      } catch (e) {
+        toast('No camera available - joining with audio only')
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      }
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    }
     localStreamRef.current = stream
+    setHasLocalVideo(stream.getVideoTracks().length > 0)
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
     return stream
-  }
+  }, [])
 
   const startCall = useCallback(async (targetId, targetName, type = 'audio') => {
     if (!targetId || state !== 'idle') return
@@ -78,12 +136,17 @@ export function CallProvider({ children }) {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       getSocket()?.emit('call:offer', { to: targetId, fromName: user?.name, type, sdp: offer })
-    } catch (err) { console.error('startCall', err); endCall(false) }
-  }, [state, user, createPeer, endCall])
+    } catch (err) {
+      console.error('startCall', err)
+      toast.error('Microphone permission is required to call')
+      endCall(false)
+    }
+  }, [state, user, getMedia, createPeer, endCall])
 
   const acceptCall = useCallback(async () => {
     const offer = pendingOfferRef.current
     if (!offer || !peer?.id) return
+    stopRingtone()
     setState('active')
     try {
       const stream = await getMedia(callType)
@@ -95,8 +158,12 @@ export function CallProvider({ children }) {
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
       getSocket()?.emit('call:answer', { to: peer.id, sdp: answer })
-    } catch (err) { console.error('acceptCall', err); endCall() }
-  }, [peer, callType, createPeer, endCall])
+    } catch (err) {
+      console.error('acceptCall', err)
+      toast.error('Microphone permission is required to answer')
+      endCall()
+    }
+  }, [peer, callType, getMedia, createPeer, endCall, stopRingtone])
 
   const rejectCall = useCallback(() => {
     if (peer?.id) getSocket()?.emit('call:reject', { to: peer.id })
@@ -110,9 +177,27 @@ export function CallProvider({ children }) {
   }
   const toggleCam = () => {
     const s = localStreamRef.current; if (!s) return
-    s.getVideoTracks().forEach(t => { t.enabled = !t.enabled })
+    const tracks = s.getVideoTracks(); if (!tracks.length) return
+    tracks.forEach(t => { t.enabled = !t.enabled })
     setCamOff(c => !c)
   }
+
+  // ring while incoming/outgoing
+  useEffect(() => {
+    if (state === 'ringing' || state === 'calling') startRingtone()
+    else stopRingtone()
+  }, [state, startRingtone, stopRingtone])
+
+  // browser notification for an incoming call (esp. when tab is in background)
+  useEffect(() => {
+    if (state === 'ringing' && peer && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try {
+        const n = new Notification(`Incoming ${callType === 'video' ? 'video' : 'voice'} call`, { body: peer.name || 'Unknown', tag: 'incoming-call', requireInteraction: true })
+        n.onclick = () => { window.focus(); n.close() }
+        return () => { try { n.close() } catch (e) {} }
+      } catch (e) {}
+    }
+  }, [state, peer, callType])
 
   useEffect(() => {
     const socket = getSocket()
@@ -142,7 +227,7 @@ export function CallProvider({ children }) {
   }, [state, finish])
 
   return (
-    <CallContext.Provider value={{ state, callType, peer, muted, camOff, startCall, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef }}>
+    <CallContext.Provider value={{ state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, startCall, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef }}>
       {children}
       <CallModal />
     </CallContext.Provider>
@@ -161,35 +246,39 @@ function CtrlBtn({ title, danger, active, onClick, children }) {
 function CallModal() {
   const c = useCall()
   if (!c || c.state === 'idle') return null
-  const { state, callType, peer, muted, camOff, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef } = c
+  const { state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef } = c
   const isVideo = callType === 'video'
-  const statusText = state === 'calling' ? 'Calling...' : state === 'ringing' ? `Incoming ${isVideo ? 'video' : 'voice'} call` : 'In call'
+  const statusText = state === 'calling' ? 'Calling...' : state === 'ringing' ? `Incoming ${isVideo ? 'video' : 'voice'} call` : 'Connected'
+  const localPipVisible = hasLocalVideo && !camOff
 
   return (
     <div className="fixed inset-0 z-[60] bg-[#0b141a] flex flex-col items-center justify-between py-10">
       <audio ref={remoteAudioRef} autoPlay />
 
-      {isVideo && state === 'active' ? (
-        <>
-          <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover bg-black" />
-          <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-28 right-6 w-32 h-44 object-cover rounded-xl border border-white/20 bg-black z-10" />
-        </>
-      ) : (
-        <>
-          <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
-          <video ref={localVideoRef} autoPlay playsInline muted className="hidden" />
-        </>
+      {/* remote video fills the screen only when the other side's camera is on */}
+      <video ref={remoteVideoRef} autoPlay playsInline className={remoteVideoOn ? 'absolute inset-0 w-full h-full object-cover bg-black' : 'hidden'} />
+      {/* local preview (only if we actually have a camera and it's on) */}
+      <video ref={localVideoRef} autoPlay playsInline muted className={localPipVisible ? 'absolute bottom-28 right-6 w-32 h-44 object-cover rounded-xl border border-white/20 bg-black z-10' : 'hidden'} />
+
+      {/* avatar shown whenever there is no remote video (audio call, or their camera off) */}
+      {!remoteVideoOn && (
+        <div className="relative z-10 flex flex-col items-center gap-4 mt-10">
+          <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-3xl font-semibold text-[#06291f]">
+            {getInitials(peer?.name)}
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
+            <div className="text-sm text-gray-400 mt-1 animate-pulse">{statusText}</div>
+          </div>
+        </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center gap-4 mt-10">
-        <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-3xl font-semibold text-[#06291f]">
-          {getInitials(peer?.name)}
+      {remoteVideoOn && (
+        <div className="absolute top-6 left-0 right-0 text-center z-10">
+          <div className="text-lg font-semibold text-white drop-shadow">{peer?.name || 'Unknown'}</div>
+          <div className="text-xs text-gray-200 drop-shadow">{statusText}</div>
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
-          <div className="text-sm text-gray-400 mt-1 animate-pulse">{statusText}</div>
-        </div>
-      </div>
+      )}
 
       <div className="relative z-10 flex items-center gap-5">
         {state === 'ringing' ? (
@@ -211,7 +300,7 @@ function CallModal() {
               )}
             </CtrlBtn>
 
-            {isVideo && (
+            {hasLocalVideo && (
               <CtrlBtn title={camOff ? 'Camera on' : 'Camera off'} active={camOff} onClick={toggleCam}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
               </CtrlBtn>
