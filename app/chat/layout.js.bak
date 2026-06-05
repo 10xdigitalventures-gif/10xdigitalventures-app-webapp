@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import IconRail from '@/components/IconRail'
 import Sidebar from '@/components/Sidebar'
 import useChatStore from '@/store/chatStore'
 import { getSocket, disconnectSocket } from '@/lib/socket'
@@ -10,10 +9,13 @@ import api from '@/lib/api'
 
 function safeParseUser(value) {
   if (!value || value === 'undefined' || value === 'null') return null
+
   try {
     return JSON.parse(value)
   } catch {
-    if (typeof window !== 'undefined') localStorage.removeItem('user')
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('user')
+    }
     return null
   }
 }
@@ -22,14 +24,22 @@ export default function ChatLayout({ children }) {
   const router = useRouter()
 
   const {
-    setUser, setChannels, addMessage, updateMessage, deleteMessage,
-    updateReaction, setUserOnline, setUserOffline, setTyping,
+    setUser,
+    setChannels,
+    addMessage,
+    updateMessage,
+    deleteMessage,
+    updateReaction,
+    setUserOnline,
+    setUserOffline,
+    setTyping,
   } = useChatStore()
 
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
+
     if (!token || token === 'undefined' || token === 'null') {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -50,14 +60,21 @@ export default function ChatLayout({ children }) {
         const userData = meRes.data?.data || meRes.data || null
         const channelsData = Array.isArray(chRes.data?.data)
           ? chRes.data.data
-          : Array.isArray(chRes.data) ? chRes.data : []
+          : Array.isArray(chRes.data)
+            ? chRes.data
+            : []
 
         setUser(userData)
         setChannels(channelsData)
-        if (userData) localStorage.setItem('user', JSON.stringify(userData))
+
+        if (userData) {
+          localStorage.setItem('user', JSON.stringify(userData))
+        }
+
         setReady(true)
 
         const socket = getSocket()
+
         if (socket) {
           socket.emit('join:channels')
           socket.on('message:new', msg => addMessage(msg.channel_id, msg))
@@ -78,8 +95,20 @@ export default function ChatLayout({ children }) {
     }
 
     init()
+
     return () => disconnectSocket()
-  }, [router, setUser, setChannels, addMessage, updateMessage, deleteMessage, updateReaction, setUserOnline, setUserOffline, setTyping])
+  }, [
+    router,
+    setUser,
+    setChannels,
+    addMessage,
+    updateMessage,
+    deleteMessage,
+    updateReaction,
+    setUserOnline,
+    setUserOffline,
+    setTyping,
+  ])
 
   if (!ready) {
     return (
@@ -91,7 +120,6 @@ export default function ChatLayout({ children }) {
 
   return (
     <div className="flex min-h-screen bg-[#0f1117] text-white">
-      <IconRail />
       <Sidebar />
       <main className="flex-1 overflow-hidden">{children}</main>
     </div>
