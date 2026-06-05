@@ -17,7 +17,7 @@ export default function Sidebar({ activeChannelId }) {
     const fetchUsers = async () => {
       try {
         const { data } = await api.get('/users')
-        setUsers(data.filter(u => u.id !== user?.id))
+        const usersList = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []; setUsers(usersList.filter(u => u.id !== user?.id))
       } catch (err) {
         console.error('Failed to fetch users', err)
       }
@@ -41,7 +41,7 @@ export default function Sidebar({ activeChannelId }) {
     router.replace('/login')
   }
 
-  const filteredChats = channels.filter(ch => {
+  const safeChannels = Array.isArray(channels) ? channels : []; const filteredChats = safeChannels.filter(ch => {
     const matchesSearch = ch.name.toLowerCase().includes(searchQuery.toLowerCase())
     if (filter === 'groups') return ch.type === 'public' || ch.type === 'private'
     if (filter === 'all') return matchesSearch

@@ -22,6 +22,7 @@ function safeParseUser(value) {
 
 export default function ChatLayout({ children }) {
   const router = useRouter()
+
   const {
     setUser,
     setChannels,
@@ -74,25 +75,37 @@ export default function ChatLayout({ children }) {
 
         const socket = getSocket()
 
-        socket.emit('join:channels')
-        socket.on('message:new', msg => addMessage(msg.channel_id, msg))
-        socket.on('message:edited', ({ message_id, channel_id, content }) =>
-          updateMessage(channel_id, message_id, { content, is_edited: 1 })
-        )
-        socket.on('message:deleted', ({ message_id, channel_id }) =>
-          deleteMessage(channel_id, message_id)
-        )
-        socket.on('reaction:updated', ({ message_id, channel_id, emoji, user_id, action }) =>
-          updateReaction(channel_id, message_id, emoji, user_id, action)
-        )
-        socket.on('user:online', ({ user_id }) => setUserOnline(user_id))
-        socket.on('user:offline', ({ user_id }) => setUserOffline(user_id))
-        socket.on('typing:start', ({ user_id, channel_id }) =>
-          setTyping(channel_id, user_id, true)
-        )
-        socket.on('typing:stop', ({ user_id, channel_id }) =>
-          setTyping(channel_id, user_id, false)
-        )
+        if (socket) {
+          socket.emit('join:channels')
+
+          socket.on('message:new', msg => addMessage(msg.channel_id, msg))
+
+          socket.on('message:edited', ({ message_id, channel_id, content }) =>
+            updateMessage(channel_id, message_id, {
+              content,
+              is_edited: 1,
+            })
+          )
+
+          socket.on('message:deleted', ({ message_id, channel_id }) =>
+            deleteMessage(channel_id, message_id)
+          )
+
+          socket.on('reaction:updated', ({ message_id, channel_id, emoji, user_id, action }) =>
+            updateReaction(channel_id, message_id, emoji, user_id, action)
+          )
+
+          socket.on('user:online', ({ user_id }) => setUserOnline(user_id))
+          socket.on('user:offline', ({ user_id }) => setUserOffline(user_id))
+
+          socket.on('typing:start', ({ user_id, channel_id }) =>
+            setTyping(channel_id, user_id, true)
+          )
+
+          socket.on('typing:stop', ({ user_id, channel_id }) =>
+            setTyping(channel_id, user_id, false)
+          )
+        }
       } catch (error) {
         console.error('Chat init failed:', error)
         localStorage.removeItem('token')
@@ -104,12 +117,23 @@ export default function ChatLayout({ children }) {
     init()
 
     return () => disconnectSocket()
-  }, [])
+  }, [
+    router,
+    setUser,
+    setChannels,
+    addMessage,
+    updateMessage,
+    deleteMessage,
+    updateReaction,
+    setUserOnline,
+    setUserOffline,
+    setTyping,
+  ])
 
   if (!ready) {
     return (
       <div className="min-h-screen bg-[#0f1117] text-white flex items-center justify-center">
-        Loading...
+        Loading chat...
       </div>
     )
   }
