@@ -24,7 +24,7 @@ export default function Message({ msg, channelId }) {
   // Status ticks helper
   const renderStatus = () => {
     if (!isOwn) return null;
-    const stats = msg.status || [];
+    const stats = Array.isArray(msg.status) ? msg.status : [];
     const read = stats.every(s => s.read_at);
     const delivered = stats.every(s => s.delivered_at);
 

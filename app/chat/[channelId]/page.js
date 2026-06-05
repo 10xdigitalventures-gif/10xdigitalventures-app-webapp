@@ -37,7 +37,7 @@ export default function ChannelPage() {
 
       // Emit read status for all unread messages
       const unreadIds = msgRes.data.data
-        .filter(m => m.sender_id !== user?.id && (!m.status || !m.status.some(s => s.user_id === user?.id && s.read_at)))
+        .filter(m => m.sender_id !== user?.id && (!Array.isArray(m.status) || !m.status.some(s => s.user_id === user?.id && s.read_at)))
         .map(m => m.id);
 
       if (unreadIds.length > 0) {
