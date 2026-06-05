@@ -56,7 +56,7 @@ export default function Message({ msg, channelId }) {
 
   const groupedReactions = () => {
     const __rx = Array.isArray(msg.reactions) ? msg.reactions : []; if (!__rx.length) return {}
-    return __rx.reduce((acc, r) => {
+    return msg.reactions.reduce((acc, r) => {
       acc[r.emoji] = acc[r.emoji] || []
       acc[r.emoji].push(r.user_id)
       return acc

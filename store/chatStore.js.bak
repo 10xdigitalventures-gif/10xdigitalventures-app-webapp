@@ -75,7 +75,7 @@ const useChatStore = create((set, get) => ({
         ...s.messages,
         [channelId]: (s.messages[channelId] || []).map(m => {
           if (m.id !== messageId) return m
-          let reactions = Array.isArray(m.reactions) ? [...m.reactions] : []
+          let reactions = m.reactions ? [...m.reactions] : []
           if (action === 'removed') {
             reactions = reactions.filter(r => !(r.emoji === emoji && r.user_id === userId))
           } else {
