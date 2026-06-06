@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import IconRail from '@/components/IconRail'
 import Sidebar from '@/components/Sidebar'
 import { CallProvider } from '@/context/CallContext'
+import { GroupCallProvider } from '@/context/GroupCallContext'
 import useChatStore from '@/store/chatStore'
 import { getSocket, disconnectSocket } from '@/lib/socket'
 import api from '@/lib/api'
@@ -68,11 +69,13 @@ export default function ChatLayout({ children }) {
 
   return (
     <CallProvider>
+      <GroupCallProvider>
       <div className="flex h-screen overflow-hidden bg-[#0f1117] text-white">
         <IconRail />
         <Sidebar />
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
+          </GroupCallProvider>
     </CallProvider>
   )
 }

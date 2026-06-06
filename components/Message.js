@@ -4,13 +4,58 @@ import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
 import { mediaUrl } from '@/lib/chatFormat'
 
-const EMOJIS = ['ðŸ‘','â¤ï¸','ðŸ˜‚','ðŸ˜®','ðŸ˜¢','ðŸ”¥','âœ…','ðŸ‘€']
+// Reaction emojis as code points (ASCII source = no encoding risk).
+// thumbs_up, red_heart, joy, open_mouth, cry, fire, check, eyes
+const EMOJI_CP = [
+  [0x1F44D], [0x2764, 0xFE0F], [0x1F602], [0x1F62E],
+  [0x1F622], [0x1F525], [0x2705], [0x1F440]
+]
+const EMOJIS = EMOJI_CP.map(parts => String.fromCodePoint(...parts))
+
 const timeFormatter = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 
 function fmtSize(bytes) {
   if (!bytes) return ''
   const kb = bytes / 1024
   return kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`
+}
+
+// --- inline SVG ticks (no emoji needed) ---
+function TickSingle({ className }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 11" fill="none" className={className} aria-hidden="true">
+      <path d="M1 5.5L5.5 10L15 1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+function TickDouble({ className }) {
+  return (
+    <svg width="18" height="14" viewBox="0 0 20 11" fill="none" className={className} aria-hidden="true">
+      <path d="M1 5.5L5 9.5L13 1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 5.5L11 9.5L19 1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+function SmileIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+    </svg>
+  )
+}
+function PencilIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+    </svg>
+  )
+}
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+    </svg>
+  )
 }
 
 export default function Message({ msg, channelId }) {
@@ -30,9 +75,9 @@ export default function Message({ msg, channelId }) {
     const stats = Array.isArray(msg.status) ? msg.status : []
     const read = stats.length > 0 && stats.every(s => s.read_at)
     const delivered = stats.length > 0 && stats.every(s => s.delivered_at)
-    if (read) return <span className="text-[#34b7f1]" title="Read">âœ“âœ“</span>
-    if (delivered) return <span className="text-gray-400" title="Delivered">âœ“âœ“</span>
-    return <span className="text-gray-400" title="Sent">âœ“</span>
+    if (read) return <span className="inline-flex items-center text-[#34b7f1]" title="Read"><TickDouble /></span>
+    if (delivered) return <span className="inline-flex items-center text-gray-400" title="Delivered"><TickDouble /></span>
+    return <span className="inline-flex items-center text-gray-400" title="Sent"><TickSingle /></span>
   }
 
   const saveEdit = () => {
@@ -127,9 +172,9 @@ export default function Message({ msg, channelId }) {
 
       {showActions && !editing && (
         <div className={`flex items-center gap-1 mx-2 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-          <button onClick={() => setShowEmoji(!showEmoji)} className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-sm">ðŸ˜Š</button>
-          {isOwn && (<button onClick={() => setEditing(true)} className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-xs text-gray-500 hover:text-white">âœï¸</button>)}
-          {isOwn && (<button onClick={deleteMsg} className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-xs text-gray-500 hover:text-red-400">ðŸ—‘ï¸</button>)}
+          <button onClick={() => setShowEmoji(!showEmoji)} title="React" className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-gray-400 hover:text-white"><SmileIcon /></button>
+          {isOwn && (<button onClick={() => setEditing(true)} title="Edit" className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-gray-500 hover:text-white"><PencilIcon /></button>)}
+          {isOwn && (<button onClick={deleteMsg} title="Delete" className="w-7 h-7 flex items-center justify-center hover:bg-white/5 rounded-full text-gray-500 hover:text-red-400"><TrashIcon /></button>)}
           {showEmoji && (
             <div className={`absolute bottom-full mb-2 bg-[#1a1d24] border border-[#3a3d45] rounded-full p-1.5 flex gap-1 shadow-xl z-50 animate-fade-in ${isOwn ? 'right-0' : 'left-0'}`}>
               {EMOJIS.map(e => (<button key={e} onClick={() => toggleReaction(e)} className="w-8 h-8 flex items-center justify-center hover:scale-125 transition-transform text-lg">{e}</button>))}

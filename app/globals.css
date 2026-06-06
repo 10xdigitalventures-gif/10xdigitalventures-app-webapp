@@ -13,6 +13,8 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html, body, #__next { height: 100%; }
+
 body {
   background: var(--bg-dark);
   color: var(--text-primary);
@@ -26,8 +28,7 @@ body {
 ::-webkit-scrollbar-thumb { background: #3a3d45; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #4a4d55; }
 
-/* WhatsApp Style Components */
-
+/* Message bubbles (WhatsApp style) */
 .message-bubble {
   max-width: 70%;
   padding: 8px 12px;
@@ -35,31 +36,29 @@ body {
   position: relative;
   margin-bottom: 2px;
 }
-
 .message-sent {
-  background: #056162; /* WhatsApp Dark Green for sent */
+  background: #056162;
   align-self: flex-end;
   border-bottom-right-radius: 2px;
 }
-
 .message-received {
-  background: #262d31; /* WhatsApp Dark Grey for received */
+  background: #262d31;
   align-self: flex-start;
   border-bottom-left-radius: 2px;
 }
 
+/* Chat scroll area:
+   The parent <div ref={scrollRef}> already has `flex-1 overflow-y-auto`.
+   So `.chat-area` just needs to be a vertical flex column with padding,
+   and it must NOT impose a fixed height (that was the old bug). */
 .chat-area {
-  height: calc(100vh - 120px);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: 20px;
+  min-height: 100%;
 }
 
-.sidebar-item {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
+.sidebar-item { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 .sidebar-item:hover { background: rgba(255,255,255,0.06); }
 .sidebar-item.active { background: rgba(29, 183, 145, 0.15); border-left: 3px solid var(--brand-color); }
 
@@ -89,44 +88,9 @@ input:focus, textarea:focus { border-color: var(--brand-color); }
 .btn-primary:hover { filter: brightness(1.1); }
 .btn-primary:active { transform: scale(0.98); }
 
-/* Animation Classes */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
 
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
-}
-
-/* Accessibility */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-
-/* 10x chat area override */
-.chat-area {
-  min-height: 100%;
-  height: auto !important;
-  overflow-y: visible !important;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-}
-
-
-/* 10x inline chat scroll fix */
-.chat-area {
-  height: 100% !important;
-  min-height: 0 !important;
-  overflow-y: auto !important;
-  display: flex !important;
-  flex-direction: column !important;
-  padding: 20px !important;
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
