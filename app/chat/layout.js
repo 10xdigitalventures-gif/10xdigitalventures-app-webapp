@@ -11,50 +11,31 @@ import api from '@/lib/api'
 
 function safeParseUser(value) {
   if (!value || value === 'undefined' || value === 'null') return null
-  try {
-    return JSON.parse(value)
-  } catch {
-    if (typeof window !== 'undefined') localStorage.removeItem('user')
-    return null
-  }
+  try { return JSON.parse(value) } catch { if (typeof window !== 'undefined') localStorage.removeItem('user'); return null }
 }
 
 export default function ChatLayout({ children }) {
   const router = useRouter()
-
   const {
-    setUser, setChannels, addMessage, updateMessage, deleteMessage,
+    setUser, setChannels, addChannel, addMessage, updateMessage, deleteMessage,
     updateReaction, setUserOnline, setUserOffline, setTyping,
   } = useChatStore()
-
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (!token || token === 'undefined' || token === 'null') {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      router.replace('/login')
-      return
+      localStorage.removeItem('token'); localStorage.removeItem('user'); router.replace('/login'); return
     }
-
     const savedUser = safeParseUser(localStorage.getItem('user'))
     if (savedUser) setUser(savedUser)
 
     const init = async () => {
       try {
-        const [meRes, chRes] = await Promise.all([
-          api.get('/auth/me'),
-          api.get('/channels'),
-        ])
-
+        const [meRes, chRes] = await Promise.all([api.get('/auth/me'), api.get('/channels')])
         const userData = meRes.data?.data || meRes.data || null
-        const channelsData = Array.isArray(chRes.data?.data)
-          ? chRes.data.data
-          : Array.isArray(chRes.data) ? chRes.data : []
-
-        setUser(userData)
-        setChannels(channelsData)
+        const channelsData = Array.isArray(chRes.data?.data) ? chRes.data.data : Array.isArray(chRes.data) ? chRes.data : []
+        setUser(userData); setChannels(channelsData)
         if (userData) localStorage.setItem('user', JSON.stringify(userData))
         setReady(true)
 
@@ -69,25 +50,20 @@ export default function ChatLayout({ children }) {
           socket.on('user:offline', ({ user_id }) => setUserOffline(user_id))
           socket.on('typing:start', ({ user_id, channel_id }) => setTyping(channel_id, user_id, true))
           socket.on('typing:stop', ({ user_id, channel_id }) => setTyping(channel_id, user_id, false))
+          socket.on('channel:new', (ch) => { addChannel(ch); socket.emit('join:channels') })
         }
       } catch (error) {
         console.error('Chat init failed:', error)
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        router.replace('/login')
+        localStorage.removeItem('token'); localStorage.removeItem('user'); router.replace('/login')
       }
     }
 
     init()
     return () => disconnectSocket()
-  }, [router, setUser, setChannels, addMessage, updateMessage, deleteMessage, updateReaction, setUserOnline, setUserOffline, setTyping])
+  }, [router, setUser, setChannels, addChannel, addMessage, updateMessage, deleteMessage, updateReaction, setUserOnline, setUserOffline, setTyping])
 
   if (!ready) {
-    return (
-      <div className="min-h-screen bg-[#0f1117] text-white flex items-center justify-center">
-        Loading chat...
-      </div>
-    )
+    return (<div className="h-screen bg-[#0f1117] text-white flex items-center justify-center">Loading chat...</div>)
   }
 
   return (

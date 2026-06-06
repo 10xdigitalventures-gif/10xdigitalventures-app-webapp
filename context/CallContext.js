@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
 import { getInitials } from '@/lib/chatFormat'
+import api from '@/lib/api'
 
 const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] }
 const CallContext = createContext(null)
@@ -29,6 +30,18 @@ export function CallProvider({ children }) {
   const pendingCandidatesRef = useRef([])
   const audioCtxRef = useRef(null)
   const ringRef = useRef(null)
+
+  // for call logging
+  const peerRef = useRef(null)
+  const callTypeRef = useRef('audio')
+  const callerRef = useRef(false)
+  const answeredRef = useRef(false)
+  const declinedRef = useRef(false)
+  const startTsRef = useRef(0)
+  const loggedRef = useRef(false)
+
+  useEffect(() => { peerRef.current = peer }, [peer])
+  useEffect(() => { callTypeRef.current = callType }, [callType])
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -55,6 +68,16 @@ export function CallProvider({ children }) {
   }, [])
   const stopRingtone = useCallback(() => { if (ringRef.current) { clearInterval(ringRef.current); ringRef.current = null } }, [])
 
+  const logCall = useCallback(() => {
+    if (loggedRef.current || !peerRef.current) return
+    loggedRef.current = true
+    const answered = answeredRef.current
+    const duration = answered && startTsRef.current ? Math.round((Date.now() - startTsRef.current) / 1000) : 0
+    const direction = callerRef.current ? 'out' : 'in'
+    const status = answered ? 'answered' : (declinedRef.current ? 'declined' : (callerRef.current ? 'no_answer' : 'missed'))
+    api.post('/calls', { peer_id: peerRef.current.id, peer_name: peerRef.current.name, type: callTypeRef.current, direction, status, duration }).catch(() => {})
+  }, [])
+
   const cleanup = useCallback(() => {
     stopRingtone()
     try { pcRef.current?.close() } catch (e) {}
@@ -65,8 +88,9 @@ export function CallProvider({ children }) {
     pendingCandidatesRef.current = []
     setMuted(false); setCamOff(false); setHasLocalVideo(false); setRemoteVideoOn(false)
   }, [stopRingtone])
-  const finish = useCallback(() => { cleanup(); setState('idle'); setPeer(null) }, [cleanup])
-  const endCall = useCallback((notify = true) => { if (notify && peer?.id) getSocket()?.emit('call:end', { to: peer.id }); finish() }, [peer, finish])
+
+  const finish = useCallback(() => { logCall(); cleanup(); setState('idle'); setPeer(null) }, [logCall, cleanup])
+  const endCall = useCallback((notify = true) => { if (notify && peerRef.current?.id) getSocket()?.emit('call:end', { to: peerRef.current.id }); finish() }, [finish])
 
   const attachRemote = (stream) => {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream
@@ -100,6 +124,7 @@ export function CallProvider({ children }) {
 
   const startCall = useCallback(async (targetId, targetName, type = 'audio') => {
     if (!targetId || state !== 'idle') return
+    callerRef.current = true; answeredRef.current = false; declinedRef.current = false; loggedRef.current = false; startTsRef.current = 0
     setPeer({ id: targetId, name: targetName }); setCallType(type); setState('calling')
     try {
       const stream = await getMedia(type)
@@ -113,7 +138,7 @@ export function CallProvider({ children }) {
   const acceptCall = useCallback(async () => {
     const offer = pendingOfferRef.current
     if (!offer || !peer?.id) return
-    stopRingtone(); setState('active')
+    stopRingtone(); answeredRef.current = true; startTsRef.current = Date.now(); setState('active')
     try {
       const stream = await getMedia(callType)
       const pc = createPeer(peer.id)
@@ -126,7 +151,7 @@ export function CallProvider({ children }) {
     } catch (err) { console.error(err); toast.error('Microphone permission is required to answer'); endCall() }
   }, [peer, callType, getMedia, createPeer, endCall, stopRingtone])
 
-  const rejectCall = useCallback(() => { if (peer?.id) getSocket()?.emit('call:reject', { to: peer.id }); finish() }, [peer, finish])
+  const rejectCall = useCallback(() => { declinedRef.current = true; if (peer?.id) getSocket()?.emit('call:reject', { to: peer.id }); finish() }, [peer, finish])
   const toggleMute = () => { const s = localStreamRef.current; if (!s) return; s.getAudioTracks().forEach(t => { t.enabled = !t.enabled }); setMuted(m => !m) }
   const toggleCam = () => { const s = localStreamRef.current; if (!s) return; const tr = s.getVideoTracks(); if (!tr.length) return; tr.forEach(t => { t.enabled = !t.enabled }); setCamOff(c => !c) }
 
@@ -146,9 +171,10 @@ export function CallProvider({ children }) {
     const socket = getSocket(); if (!socket) return
     const onOffer = ({ from, fromName, type, sdp }) => {
       if (pcRef.current || state !== 'idle') { socket.emit('call:reject', { to: from }); return }
+      callerRef.current = false; answeredRef.current = false; declinedRef.current = false; loggedRef.current = false; startTsRef.current = 0
       pendingOfferRef.current = sdp; setPeer({ id: from, name: fromName || 'Unknown' }); setCallType(type || 'audio'); setState('ringing')
     }
-    const onAnswer = async ({ sdp }) => { try { await pcRef.current?.setRemoteDescription(new RTCSessionDescription(sdp)); setState('active') } catch (e) {} }
+    const onAnswer = async ({ sdp }) => { try { await pcRef.current?.setRemoteDescription(new RTCSessionDescription(sdp)); answeredRef.current = true; startTsRef.current = Date.now(); setState('active') } catch (e) {} }
     const onIce = async ({ candidate }) => {
       if (!candidate) return
       if (pcRef.current && pcRef.current.remoteDescription) { try { await pcRef.current.addIceCandidate(candidate) } catch (e) {} }
@@ -189,11 +215,9 @@ function CallModal() {
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className={`bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full overflow-hidden ${showStage ? 'max-w-2xl' : 'max-w-sm'}`}>
         <audio ref={remoteAudioRef} autoPlay />
-
         <div className={showStage ? 'relative bg-black aspect-video' : 'flex flex-col items-center gap-4 pt-10 pb-6 px-6 relative'}>
           <video ref={remoteVideoRef} autoPlay playsInline className={showStage ? 'absolute inset-0 w-full h-full object-cover' : 'hidden'} />
-          <video ref={localVideoRef} autoPlay playsInline muted className={localPip ? (showStage ? 'absolute bottom-3 right-3 w-24 h-32 object-cover rounded-lg border border-white/20 z-10' : 'absolute top-3 right-3 w-16 h-22 object-cover rounded-lg border border-white/20 z-10') : 'hidden'} />
-
+          <video ref={localVideoRef} autoPlay playsInline muted className={localPip ? (showStage ? 'absolute bottom-3 right-3 w-24 h-32 object-cover rounded-lg border border-white/20 z-10' : 'absolute top-3 right-3 w-16 h-24 object-cover rounded-lg border border-white/20 z-10') : 'hidden'} />
           {showStage ? (
             <div className="absolute top-3 left-4 z-10">
               <div className="text-base font-semibold text-white drop-shadow">{peer?.name || 'Unknown'}</div>
@@ -209,7 +233,6 @@ function CallModal() {
             </>
           )}
         </div>
-
         <div className="flex items-center justify-center gap-4 py-5 bg-[#111820] border-t border-white/5">
           {state === 'ringing' ? (
             <>
