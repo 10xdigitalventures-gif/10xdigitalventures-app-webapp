@@ -246,22 +246,43 @@ export function CallProvider({ children }) {
   )
 }
 
-function CtrlBtn({ title, danger, accept, active, onClick, children }) {
-  const cls = danger ? 'bg-red-600 hover:bg-red-700 text-white'
-            : accept ? 'bg-green-600 hover:bg-green-700 text-white'
-            : active ? 'bg-white text-[#111820]'
-            : 'bg-white/10 hover:bg-white/20 text-white'
+// ---------------------------------------------------------------
+// WhatsApp Desktop-style call modal
+// Reasoning rules applied:
+//   - Touch & Interaction: 56x56 control buttons, 16px gaps
+//   - Hierarchy: avatar 144 (lg) -> name 2xl -> status sm
+//   - Labeling: every action has a visible label under the icon
+//   - Press feedback: hover bg + slight scale on press
+//   - Color contrast: white-on-#0b141a is 14:1 (AAA)
+//   - Animation: pulsing ring while calling (meaningful motion)
+// ---------------------------------------------------------------
+
+function LabeledBtn({ title, variant, onClick, children }) {
+  // variant: 'mute' | 'accept' | 'decline' | 'end' | 'video' | 'message' | 'callagain' | 'close' | 'neutral'
+  const variants = {
+    mute:      'bg-white/10 hover:bg-white/15 text-white',
+    muted:     'bg-white text-[#0b141a]',
+    accept:    'bg-[#1db791] hover:bg-[#17a884] text-white',
+    decline:   'bg-[#f15c6d] hover:bg-[#e04658] text-white',
+    end:       'bg-[#f15c6d] hover:bg-[#e04658] text-white',
+    video:     'bg-white/10 hover:bg-white/15 text-white',
+    videooff:  'bg-white text-[#0b141a]',
+    message:   'bg-white/10 hover:bg-white/15 text-white',
+    callagain: 'bg-[#1db791] hover:bg-[#17a884] text-white',
+    close:     'bg-white/10 hover:bg-white/15 text-white',
+    neutral:   'bg-white/10 hover:bg-white/15 text-white',
+  }
+  const cls = variants[variant] || variants.neutral
   return (
-    <button onClick={onClick} title={title} aria-label={title} className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${cls}`}>
-      {children}
-    </button>
-  )
-}
-function SmallActionBtn({ title, onClick, children }) {
-  return (
-    <button onClick={onClick} title={title} aria-label={title} className="flex flex-col items-center gap-1.5 text-white/80 hover:text-white transition-colors">
-      <span className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">{children}</span>
-      <span className="text-[11px]">{title}</span>
+    <button
+      onClick={onClick}
+      aria-label={title}
+      className="flex flex-col items-center gap-2 group focus:outline-none"
+    >
+      <span className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 group-focus-visible:ring-2 group-focus-visible:ring-white/40 ${cls}`}>
+        {children}
+      </span>
+      <span className="text-[12px] text-white/70 group-hover:text-white/90 transition-colors">{title}</span>
     </button>
   )
 }
@@ -275,113 +296,177 @@ function formatDur(s) {
 function CallModal() {
   const c = useCall()
   if (!c || c.state === 'idle') return null
-  const { state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, endReason, callDuration,
-          acceptCall, rejectCall, endCall, toggleMute, toggleCam,
-          openChat, callAgain, dismissEnded, localVideoRef, remoteVideoRef, remoteAudioRef } = c
+  const {
+    state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn,
+    endReason, callDuration,
+    acceptCall, rejectCall, endCall, toggleMute, toggleCam,
+    openChat, callAgain, dismissEnded,
+    localVideoRef, remoteVideoRef, remoteAudioRef
+  } = c
 
   const isVideo = callType === 'video'
 
+  // ============== ENDED SCREEN ==============
   if (state === 'ended') {
-    const label = endReason === 'declined' ? 'Call declined'
+    const label = endReason === 'declined'  ? 'Call declined'
                 : endReason === 'no_answer' ? 'No answer'
-                : endReason === 'missed' ? 'Missed call'
-                : callDuration > 0 ? 'Call ended  -  ' + formatDur(callDuration)
+                : endReason === 'missed'    ? 'Missed call'
+                : callDuration > 0          ? 'Call ended  -  ' + formatDur(callDuration)
                 : 'Call ended'
     return (
-      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        <div className="bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
+        <div className="bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full max-w-[420px] overflow-hidden">
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#111b21]">
-            <div className="flex items-center gap-2 text-sm text-white/80">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <div className="flex items-center gap-2 text-[13px] text-white/70">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
               <span>End-to-end encrypted</span>
             </div>
-            <button onClick={dismissEnded} title="Close" className="text-white/60 hover:text-white">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button onClick={dismissEnded} title="Close" aria-label="Close"
+              className="w-8 h-8 flex items-center justify-center rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
             </button>
           </div>
-          <div className="flex flex-col items-center gap-3 pt-12 pb-10 px-6">
-            <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-4xl font-semibold text-[#06291f]">{getInitials(peer?.name)}</div>
-            <div className="text-center mt-3">
-              <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
-              <div className="text-sm text-gray-400 mt-1">{label}</div>
+
+          {/* Body */}
+          <div className="flex flex-col items-center pt-14 pb-12 px-6">
+            <div className="w-36 h-36 rounded-full bg-gradient-to-br from-[#1db791] to-[#17a884] flex items-center justify-center text-[44px] font-semibold text-white shadow-xl">
+              {getInitials(peer?.name)}
+            </div>
+            <div className="text-center mt-6">
+              <div className="text-[22px] font-semibold text-white tracking-tight">{peer?.name || 'Unknown'}</div>
+              <div className="text-[14px] text-white/55 mt-1.5">{label}</div>
             </div>
           </div>
-          <div className="flex items-center justify-around py-5 bg-[#111820] border-t border-white/5">
-            <SmallActionBtn title="Message" onClick={openChat}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </SmallActionBtn>
-            <SmallActionBtn title="Call again" onClick={callAgain}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1db791" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-            </SmallActionBtn>
-            <SmallActionBtn title="Close" onClick={dismissEnded}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </SmallActionBtn>
+
+          {/* Actions */}
+          <div className="flex items-start justify-around pt-3 pb-6 px-4 bg-[#0a1218] border-t border-white/5">
+            <LabeledBtn title="Message" variant="message" onClick={openChat}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </LabeledBtn>
+            <LabeledBtn title="Call again" variant="callagain" onClick={callAgain}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+            </LabeledBtn>
+            <LabeledBtn title="Close" variant="close" onClick={dismissEnded}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </LabeledBtn>
           </div>
         </div>
       </div>
     )
   }
 
-  const statusText = state === 'calling' ? 'Calling...' : state === 'ringing' ? `Incoming ${isVideo ? 'video' : 'voice'} call` : 'Connected'
+  // ============== ACTIVE / CALLING / RINGING ==============
+  const statusText = state === 'calling' ? 'Calling...'
+                   : state === 'ringing' ? `Incoming ${isVideo ? 'video' : 'voice'} call`
+                   : 'Connected'
   const showStage = remoteVideoOn && state === 'active'
-  const localPip = hasLocalVideo && !camOff
+  const localPip  = hasLocalVideo && !camOff
+  const isPulsing = state === 'calling' || state === 'ringing'
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
-      <div className={`bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full overflow-hidden ${showStage ? 'max-w-3xl' : 'max-w-md'}`}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fade-in">
+      <div className={`bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full overflow-hidden ${showStage ? 'max-w-3xl' : 'max-w-[420px]'}`}>
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#111b21]">
-          <div className="flex items-center gap-2 text-sm text-white/80">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <div className="flex items-center gap-2 text-[13px] text-white/70">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
             <span>End-to-end encrypted</span>
           </div>
-          <span className="text-[11px] text-white/40">{isVideo ? 'Video' : 'Voice'}</span>
+          <span className="text-[12px] text-white/40 uppercase tracking-wider">{isVideo ? 'Video' : 'Voice'}</span>
         </div>
 
         <audio ref={remoteAudioRef} autoPlay />
-        <div className={showStage ? 'relative bg-black aspect-video' : 'flex flex-col items-center gap-4 pt-12 pb-8 px-6 relative'}>
+
+        {/* Body */}
+        <div className={showStage
+          ? 'relative bg-black aspect-video'
+          : 'flex flex-col items-center pt-14 pb-12 px-6 relative bg-gradient-to-b from-[#0b141a] to-[#0a1218]'
+        }>
           <video ref={remoteVideoRef} autoPlay playsInline className={showStage ? 'absolute inset-0 w-full h-full object-cover' : 'hidden'} />
-          <video ref={localVideoRef} autoPlay playsInline muted className={localPip ? (showStage ? 'absolute bottom-3 right-3 w-28 h-40 object-cover rounded-lg border border-white/20 z-10' : 'absolute top-3 right-3 w-20 h-28 object-cover rounded-lg border border-white/20 z-10') : 'hidden'} />
+          <video ref={localVideoRef} autoPlay playsInline muted className={localPip
+            ? (showStage
+                ? 'absolute bottom-3 right-3 w-32 h-44 object-cover rounded-xl border-2 border-white/20 z-10 shadow-2xl'
+                : 'absolute top-3 right-3 w-20 h-28 object-cover rounded-lg border border-white/20 z-10')
+            : 'hidden'} />
+
           {showStage ? (
             <div className="absolute top-3 left-4 z-10">
-              <div className="text-base font-semibold text-white drop-shadow">{peer?.name || 'Unknown'}</div>
-              <div className="text-[11px] text-gray-200 drop-shadow">{statusText}</div>
+              <div className="text-[16px] font-semibold text-white drop-shadow">{peer?.name || 'Unknown'}</div>
+              <div className="text-[12px] text-white/80 drop-shadow">{statusText}</div>
             </div>
           ) : (
             <>
-              <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-4xl font-semibold text-[#06291f]">{getInitials(peer?.name)}</div>
-              <div className="text-center mt-2">
-                <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
-                <div className="text-sm text-gray-400 mt-1 animate-pulse">{statusText}</div>
+              {/* Avatar with pulsing ring */}
+              <div className="relative">
+                {isPulsing && (
+                  <>
+                    <span className="absolute inset-0 rounded-full bg-[#1db791]/20 animate-ping" />
+                    <span className="absolute inset-0 rounded-full bg-[#1db791]/10 animate-ping" style={{ animationDelay: '0.5s' }} />
+                  </>
+                )}
+                <div className="relative w-36 h-36 rounded-full bg-gradient-to-br from-[#1db791] to-[#17a884] flex items-center justify-center text-[44px] font-semibold text-white shadow-xl">
+                  {getInitials(peer?.name)}
+                </div>
+              </div>
+              <div className="text-center mt-6">
+                <div className="text-[22px] font-semibold text-white tracking-tight">{peer?.name || 'Unknown'}</div>
+                <div className="text-[14px] text-white/55 mt-1.5">{statusText}</div>
               </div>
             </>
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-5 py-6 bg-[#111820] border-t border-white/5">
+        {/* Controls */}
+        <div className="flex items-start justify-center gap-8 pt-4 pb-6 px-4 bg-[#0a1218] border-t border-white/5">
           {state === 'ringing' ? (
             <>
-              <CtrlBtn title="Decline" danger onClick={rejectCall}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.24"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
-              </CtrlBtn>
-              <CtrlBtn title="Accept" accept onClick={acceptCall}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              </CtrlBtn>
+              <LabeledBtn title="Decline" variant="decline" onClick={rejectCall}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.24"/>
+                  <line x1="23" y1="1" x2="1" y2="23"/>
+                </svg>
+              </LabeledBtn>
+              <LabeledBtn title="Accept" variant="accept" onClick={acceptCall}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </LabeledBtn>
             </>
           ) : (
             <>
-              <CtrlBtn title={muted ? 'Unmute' : 'Mute'} active={muted} onClick={toggleMute}>
+              <LabeledBtn title={muted ? 'Unmute' : 'Mute'} variant={muted ? 'muted' : 'mute'} onClick={toggleMute}>
                 {muted
-                  ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-                  : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>}
-              </CtrlBtn>
+                  ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                  : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>}
+              </LabeledBtn>
+
               {hasLocalVideo && (
-                <CtrlBtn title={camOff ? 'Camera on' : 'Camera off'} active={camOff} onClick={toggleCam}>
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-                </CtrlBtn>
+                <LabeledBtn title={camOff ? 'Camera on' : 'Camera off'} variant={camOff ? 'videooff' : 'video'} onClick={toggleCam}>
+                  {camOff
+                    ? <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16 16H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m4 0h6a2 2 0 0 1 2 2v.34m1.66 1.66L23 7v10"/></svg>
+                    : <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>}
+                </LabeledBtn>
               )}
-              <CtrlBtn title="End call" danger onClick={() => endCall(true)}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.24"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
-              </CtrlBtn>
+
+              <LabeledBtn title="End call" variant="end" onClick={() => endCall(true)}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.24"/>
+                  <line x1="23" y1="1" x2="1" y2="23"/>
+                </svg>
+              </LabeledBtn>
             </>
           )}
         </div>
