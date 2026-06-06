@@ -92,7 +92,7 @@ export default function ChatLayout({ children }) {
 
   return (
     <CallProvider>
-      <div className="flex min-h-screen bg-[#0f1117] text-white">
+      <div className="flex h-screen overflow-hidden bg-[#0f1117] text-white">
         <IconRail />
         <Sidebar />
         <main className="flex-1 overflow-hidden">{children}</main>

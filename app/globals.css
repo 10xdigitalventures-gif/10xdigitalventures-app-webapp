@@ -108,3 +108,14 @@ input:focus, textarea:focus { border-color: var(--brand-color); }
     scroll-behavior: auto !important;
   }
 }
+
+
+/* 10x chat area override */
+.chat-area {
+  min-height: 100%;
+  height: auto !important;
+  overflow-y: visible !important;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
