@@ -29,6 +29,7 @@ export default function ChannelPage() {
   const call = useCall()
   const [loading, setLoading] = useState(true)
   const [showMembers, setShowMembers] = useState(true)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const bottomRef = useRef(null)
   const scrollRef = useRef(null)
 
@@ -64,7 +65,14 @@ export default function ChannelPage() {
   }, [channelId, user?.id])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    {
+      const el = scrollRef.current
+      if (el) {
+        const threshold = 200
+        const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (distance < threshold) el.scrollTop = el.scrollHeight
+      }
+    }
   }, [channelMessages.length])
 
   useEffect(() => {
@@ -90,8 +98,8 @@ export default function ChannelPage() {
     : isDM ? 'online' : `${members?.length || 0} members`
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 overflow-hidden relative">
+    <div className="flex flex-1 overflow-hidden h-full min-h-0">
+      <div className="flex flex-col flex-1 overflow-hidden relative h-full min-h-0 min-w-0">
         {/* Topbar */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a2d35] bg-[#111820] flex-shrink-0 z-10">
           <div className="flex items-center gap-3 min-w-0">
@@ -112,7 +120,7 @@ export default function ChannelPage() {
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#0b0d11] scroll-smooth" style={{ backgroundImage: 'radial-gradient(circle, #1a1d24 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}>
+        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto bg-[#0b0d11] scroll-smooth" style={{ backgroundImage: 'radial-gradient(circle, #1a1d24 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}>
           <div className="chat-area">
             {loading ? (
               <div className="flex flex-col items-center justify-center h-full gap-4">
@@ -141,8 +149,19 @@ export default function ChannelPage() {
           </div>
         </div>
 
+        
+        {showScrollBtn && (
+          <button
+            onClick={() => { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight }}
+            title="Scroll to bottom"
+            aria-label="Scroll to bottom"
+            className="absolute right-5 bottom-20 z-20 w-10 h-10 rounded-full bg-[#202c33] hover:bg-[#2a3942] text-white shadow-lg border border-white/10 flex items-center justify-center"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        )}
         {/* Input */}
-        <div className="bg-[#12141a] p-1">
+        <div className="bg-[#12141a] p-1 flex-shrink-0 z-10 border-t border-[#2a2d35]">
           <MessageInput channelId={channelId} />
         </div>
       </div>

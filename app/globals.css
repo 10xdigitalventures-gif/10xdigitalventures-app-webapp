@@ -47,17 +47,6 @@ body {
   border-bottom-left-radius: 2px;
 }
 
-/* Chat scroll area:
-   The parent <div ref={scrollRef}> already has `flex-1 overflow-y-auto`.
-   So `.chat-area` just needs to be a vertical flex column with padding,
-   and it must NOT impose a fixed height (that was the old bug). */
-.chat-area {
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  min-height: 100%;
-}
-
 .sidebar-item { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 .sidebar-item:hover { background: rgba(255,255,255,0.06); }
 .sidebar-item.active { background: rgba(29, 183, 145, 0.15); border-left: 3px solid var(--brand-color); }
@@ -94,3 +83,15 @@ input:focus, textarea:focus { border-color: var(--brand-color); }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Chat scroll container: plain flex column inside the overflow-y-auto wrapper */
+.chat-area {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* msg-footer tweak: a bit of right padding to make room for time+tick */
+.message-bubble { padding-bottom: 6px; }

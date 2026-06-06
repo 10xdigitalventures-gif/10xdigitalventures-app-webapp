@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import useChatStore from '@/store/chatStore'
 import { getSocket } from '@/lib/socket'
@@ -12,10 +13,13 @@ const CallContext = createContext(null)
 export const useCall = () => useContext(CallContext)
 
 export function CallProvider({ children }) {
-  const { user } = useChatStore()
+  const { user, channels } = useChatStore()
+  const router = useRouter()
   const [state, setState] = useState('idle')
   const [callType, setCallType] = useState('audio')
   const [peer, setPeer] = useState(null)
+  const [endReason, setEndReason] = useState(null)
+  const [callDuration, setCallDuration] = useState(0)
   const [muted, setMuted] = useState(false)
   const [camOff, setCamOff] = useState(false)
   const [hasLocalVideo, setHasLocalVideo] = useState(false)
@@ -30,8 +34,8 @@ export function CallProvider({ children }) {
   const pendingCandidatesRef = useRef([])
   const audioCtxRef = useRef(null)
   const ringRef = useRef(null)
+  const endTimerRef = useRef(null)
 
-  // for call logging
   const peerRef = useRef(null)
   const callTypeRef = useRef('audio')
   const callerRef = useRef(false)
@@ -69,13 +73,14 @@ export function CallProvider({ children }) {
   const stopRingtone = useCallback(() => { if (ringRef.current) { clearInterval(ringRef.current); ringRef.current = null } }, [])
 
   const logCall = useCallback(() => {
-    if (loggedRef.current || !peerRef.current) return
+    if (loggedRef.current || !peerRef.current) return null
     loggedRef.current = true
     const answered = answeredRef.current
     const duration = answered && startTsRef.current ? Math.round((Date.now() - startTsRef.current) / 1000) : 0
     const direction = callerRef.current ? 'out' : 'in'
     const status = answered ? 'answered' : (declinedRef.current ? 'declined' : (callerRef.current ? 'no_answer' : 'missed'))
     api.post('/calls', { peer_id: peerRef.current.id, peer_name: peerRef.current.name, type: callTypeRef.current, direction, status, duration }).catch(() => {})
+    return { duration, status }
   }, [])
 
   const cleanup = useCallback(() => {
@@ -89,8 +94,31 @@ export function CallProvider({ children }) {
     setMuted(false); setCamOff(false); setHasLocalVideo(false); setRemoteVideoOn(false)
   }, [stopRingtone])
 
-  const finish = useCallback(() => { logCall(); cleanup(); setState('idle'); setPeer(null) }, [logCall, cleanup])
-  const endCall = useCallback((notify = true) => { if (notify && peerRef.current?.id) getSocket()?.emit('call:end', { to: peerRef.current.id }); finish() }, [finish])
+  const finish = useCallback(() => {
+    const info = logCall()
+    cleanup()
+    let reason = 'completed'
+    if (info) {
+      if (info.status === 'declined') reason = 'declined'
+      else if (info.status === 'no_answer') reason = 'no_answer'
+      else if (info.status === 'missed') reason = 'missed'
+    }
+    setEndReason(reason)
+    setCallDuration(info?.duration || 0)
+    setState('ended')
+    if (endTimerRef.current) clearTimeout(endTimerRef.current)
+    endTimerRef.current = setTimeout(() => { setState('idle'); setPeer(null); setEndReason(null) }, 15000)
+  }, [logCall, cleanup])
+
+  const dismissEnded = useCallback(() => {
+    if (endTimerRef.current) { clearTimeout(endTimerRef.current); endTimerRef.current = null }
+    setState('idle'); setPeer(null); setEndReason(null)
+  }, [])
+
+  const endCall = useCallback((notify = true) => {
+    if (notify && peerRef.current?.id) getSocket()?.emit('call:end', { to: peerRef.current.id })
+    finish()
+  }, [finish])
 
   const attachRemote = (stream) => {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream
@@ -123,7 +151,8 @@ export function CallProvider({ children }) {
   }, [])
 
   const startCall = useCallback(async (targetId, targetName, type = 'audio') => {
-    if (!targetId || state !== 'idle') return
+    if (!targetId || (state !== 'idle' && state !== 'ended')) return
+    if (state === 'ended') dismissEnded()
     callerRef.current = true; answeredRef.current = false; declinedRef.current = false; loggedRef.current = false; startTsRef.current = 0
     setPeer({ id: targetId, name: targetName }); setCallType(type); setState('calling')
     try {
@@ -133,7 +162,7 @@ export function CallProvider({ children }) {
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer)
       getSocket()?.emit('call:offer', { to: targetId, fromName: user?.name, type, sdp: offer })
     } catch (err) { console.error(err); toast.error('Microphone permission is required to call'); endCall(false) }
-  }, [state, user, getMedia, createPeer, endCall])
+  }, [state, user, getMedia, createPeer, endCall, dismissEnded])
 
   const acceptCall = useCallback(async () => {
     const offer = pendingOfferRef.current
@@ -155,6 +184,25 @@ export function CallProvider({ children }) {
   const toggleMute = () => { const s = localStreamRef.current; if (!s) return; s.getAudioTracks().forEach(t => { t.enabled = !t.enabled }); setMuted(m => !m) }
   const toggleCam = () => { const s = localStreamRef.current; if (!s) return; const tr = s.getVideoTracks(); if (!tr.length) return; tr.forEach(t => { t.enabled = !t.enabled }); setCamOff(c => !c) }
 
+  const findDMChannelWith = useCallback((peerId) => {
+    if (!peerId || !channels) return null
+    const dm = channels.find(c => c.type === 'dm' && (c.peer_id === peerId || c.peer === peerId))
+    return dm ? dm.id : null
+  }, [channels])
+
+  const openChat = useCallback(() => {
+    const cid = findDMChannelWith(peerRef.current?.id)
+    if (cid) router.push('/chat/' + cid)
+    dismissEnded()
+  }, [findDMChannelWith, router, dismissEnded])
+
+  const callAgain = useCallback(() => {
+    const p = peerRef.current; const t = callTypeRef.current
+    if (!p) { dismissEnded(); return }
+    dismissEnded()
+    setTimeout(() => startCall(p.id, p.name, t), 100)
+  }, [startCall, dismissEnded])
+
   useEffect(() => { if (state === 'ringing' || state === 'calling') startRingtone(); else stopRingtone() }, [state, startRingtone, stopRingtone])
 
   useEffect(() => {
@@ -170,7 +218,7 @@ export function CallProvider({ children }) {
   useEffect(() => {
     const socket = getSocket(); if (!socket) return
     const onOffer = ({ from, fromName, type, sdp }) => {
-      if (pcRef.current || state !== 'idle') { socket.emit('call:reject', { to: from }); return }
+      if (pcRef.current || (state !== 'idle' && state !== 'ended')) { socket.emit('call:reject', { to: from }); return }
       callerRef.current = false; answeredRef.current = false; declinedRef.current = false; loggedRef.current = false; startTsRef.current = 0
       pendingOfferRef.current = sdp; setPeer({ id: from, name: fromName || 'Unknown' }); setCallType(type || 'audio'); setState('ringing')
     }
@@ -186,38 +234,113 @@ export function CallProvider({ children }) {
   }, [state, finish])
 
   return (
-    <CallContext.Provider value={{ state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, startCall, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef }}>
+    <CallContext.Provider value={{
+      state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, endReason, callDuration,
+      startCall, acceptCall, rejectCall, endCall, toggleMute, toggleCam,
+      openChat, callAgain, dismissEnded,
+      localVideoRef, remoteVideoRef, remoteAudioRef
+    }}>
       {children}
       <CallModal />
     </CallContext.Provider>
   )
 }
 
-function CtrlBtn({ title, danger, active, onClick, children }) {
+function CtrlBtn({ title, danger, accept, active, onClick, children }) {
+  const cls = danger ? 'bg-red-600 hover:bg-red-700 text-white'
+            : accept ? 'bg-green-600 hover:bg-green-700 text-white'
+            : active ? 'bg-white text-[#111820]'
+            : 'bg-white/10 hover:bg-white/20 text-white'
   return (
-    <button onClick={onClick} title={title} aria-label={title}
-      className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${danger ? 'bg-red-600 hover:bg-red-700 text-white' : active ? 'bg-white text-[#111820]' : 'bg-white/10 hover:bg-white/20 text-white'}`}>
+    <button onClick={onClick} title={title} aria-label={title} className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${cls}`}>
       {children}
     </button>
   )
+}
+function SmallActionBtn({ title, onClick, children }) {
+  return (
+    <button onClick={onClick} title={title} aria-label={title} className="flex flex-col items-center gap-1.5 text-white/80 hover:text-white transition-colors">
+      <span className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">{children}</span>
+      <span className="text-[11px]">{title}</span>
+    </button>
+  )
+}
+
+function formatDur(s) {
+  if (!s) return ''
+  const m = Math.floor(s / 60), sec = s % 60
+  return m + ':' + String(sec).padStart(2, '0')
 }
 
 function CallModal() {
   const c = useCall()
   if (!c || c.state === 'idle') return null
-  const { state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, acceptCall, rejectCall, endCall, toggleMute, toggleCam, localVideoRef, remoteVideoRef, remoteAudioRef } = c
+  const { state, callType, peer, muted, camOff, hasLocalVideo, remoteVideoOn, endReason, callDuration,
+          acceptCall, rejectCall, endCall, toggleMute, toggleCam,
+          openChat, callAgain, dismissEnded, localVideoRef, remoteVideoRef, remoteAudioRef } = c
+
   const isVideo = callType === 'video'
+
+  if (state === 'ended') {
+    const label = endReason === 'declined' ? 'Call declined'
+                : endReason === 'no_answer' ? 'No answer'
+                : endReason === 'missed' ? 'Missed call'
+                : callDuration > 0 ? 'Call ended  -  ' + formatDur(callDuration)
+                : 'Call ended'
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#111b21]">
+            <div className="flex items-center gap-2 text-sm text-white/80">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>End-to-end encrypted</span>
+            </div>
+            <button onClick={dismissEnded} title="Close" className="text-white/60 hover:text-white">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div className="flex flex-col items-center gap-3 pt-12 pb-10 px-6">
+            <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-4xl font-semibold text-[#06291f]">{getInitials(peer?.name)}</div>
+            <div className="text-center mt-3">
+              <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
+              <div className="text-sm text-gray-400 mt-1">{label}</div>
+            </div>
+          </div>
+          <div className="flex items-center justify-around py-5 bg-[#111820] border-t border-white/5">
+            <SmallActionBtn title="Message" onClick={openChat}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </SmallActionBtn>
+            <SmallActionBtn title="Call again" onClick={callAgain}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1db791" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </SmallActionBtn>
+            <SmallActionBtn title="Close" onClick={dismissEnded}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </SmallActionBtn>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const statusText = state === 'calling' ? 'Calling...' : state === 'ringing' ? `Incoming ${isVideo ? 'video' : 'voice'} call` : 'Connected'
   const showStage = remoteVideoOn && state === 'active'
   const localPip = hasLocalVideo && !camOff
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className={`bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full overflow-hidden ${showStage ? 'max-w-2xl' : 'max-w-sm'}`}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
+      <div className={`bg-[#0b141a] rounded-2xl border border-white/10 shadow-2xl w-full overflow-hidden ${showStage ? 'max-w-3xl' : 'max-w-md'}`}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#111b21]">
+          <div className="flex items-center gap-2 text-sm text-white/80">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>End-to-end encrypted</span>
+          </div>
+          <span className="text-[11px] text-white/40">{isVideo ? 'Video' : 'Voice'}</span>
+        </div>
+
         <audio ref={remoteAudioRef} autoPlay />
-        <div className={showStage ? 'relative bg-black aspect-video' : 'flex flex-col items-center gap-4 pt-10 pb-6 px-6 relative'}>
+        <div className={showStage ? 'relative bg-black aspect-video' : 'flex flex-col items-center gap-4 pt-12 pb-8 px-6 relative'}>
           <video ref={remoteVideoRef} autoPlay playsInline className={showStage ? 'absolute inset-0 w-full h-full object-cover' : 'hidden'} />
-          <video ref={localVideoRef} autoPlay playsInline muted className={localPip ? (showStage ? 'absolute bottom-3 right-3 w-24 h-32 object-cover rounded-lg border border-white/20 z-10' : 'absolute top-3 right-3 w-16 h-24 object-cover rounded-lg border border-white/20 z-10') : 'hidden'} />
+          <video ref={localVideoRef} autoPlay playsInline muted className={localPip ? (showStage ? 'absolute bottom-3 right-3 w-28 h-40 object-cover rounded-lg border border-white/20 z-10' : 'absolute top-3 right-3 w-20 h-28 object-cover rounded-lg border border-white/20 z-10') : 'hidden'} />
           {showStage ? (
             <div className="absolute top-3 left-4 z-10">
               <div className="text-base font-semibold text-white drop-shadow">{peer?.name || 'Unknown'}</div>
@@ -225,22 +348,23 @@ function CallModal() {
             </div>
           ) : (
             <>
-              <div className="w-24 h-24 rounded-full bg-brand-500 flex items-center justify-center text-3xl font-semibold text-[#06291f]">{getInitials(peer?.name)}</div>
-              <div className="text-center">
-                <div className="text-xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
+              <div className="w-28 h-28 rounded-full bg-brand-500 flex items-center justify-center text-4xl font-semibold text-[#06291f]">{getInitials(peer?.name)}</div>
+              <div className="text-center mt-2">
+                <div className="text-2xl font-semibold text-white">{peer?.name || 'Unknown'}</div>
                 <div className="text-sm text-gray-400 mt-1 animate-pulse">{statusText}</div>
               </div>
             </>
           )}
         </div>
-        <div className="flex items-center justify-center gap-4 py-5 bg-[#111820] border-t border-white/5">
+
+        <div className="flex items-center justify-center gap-5 py-6 bg-[#111820] border-t border-white/5">
           {state === 'ringing' ? (
             <>
               <CtrlBtn title="Decline" danger onClick={rejectCall}>
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 8.63 19.24"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
               </CtrlBtn>
-              <CtrlBtn title="Accept" onClick={acceptCall}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1db791" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              <CtrlBtn title="Accept" accept onClick={acceptCall}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               </CtrlBtn>
             </>
           ) : (

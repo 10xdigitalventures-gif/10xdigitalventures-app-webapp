@@ -73,7 +73,7 @@ export default function ChatLayout({ children }) {
       <div className="flex h-screen overflow-hidden bg-[#0f1117] text-white">
         <IconRail />
         <Sidebar />
-        <main className="flex-1 overflow-hidden">{children}</main>
+        <main className="flex-1 overflow-hidden h-full min-w-0 min-h-0">{children}</main>
       </div>
           </GroupCallProvider>
     </CallProvider>
