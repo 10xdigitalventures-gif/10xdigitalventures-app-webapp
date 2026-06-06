@@ -87,10 +87,16 @@ export default function ChannelPage() {
     return () => socket.off('message:new', handleNewMessage)
   }, [channelId, user?.id])
 
+  const groupCall = useGroupCall()
   const handleCall = (type) => {
-    if (!isDM || !dmPeer) { toast('Calls are available in direct messages'); return }
-    if (!call?.startCall) { toast('Calling is not ready'); return }
-    call.startCall(dmPeer.id, dmPeer.name, type)
+    if (isDM) {
+      if (!dmPeer) { toast('No peer to call'); return }
+      if (!call?.startCall) { toast('Calling is not ready'); return }
+      call.startCall(dmPeer.id, dmPeer.name, type)
+    } else {
+      if (!groupCall?.startCall) { toast('Group calling is not ready'); return }
+      groupCall.startCall(channelId, type)
+    }
   }
 
   const subtitle = typingInChannel.length > 0
